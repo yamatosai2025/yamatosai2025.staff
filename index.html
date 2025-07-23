@@ -35,8 +35,10 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // ★ 修正点: 環境変数からFirebase設定を読み込むように変更
-        const firebaseConfig = {
+        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        // ★ ここに、メインサイトと同じFirebaseプロジェクトの設定情報を貼り付けてください ★
+        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+       const firebaseConfig = {
   apiKey: "AIzaSyBUclBluehOXOZXlDCeePcdVKmYdKkRxFI",
   authDomain: "yamatosai2025-4f10b.firebaseapp.com",
   projectId: "yamatosai2025-4f10b",
@@ -45,7 +47,17 @@
   appId: "1:817983089763:web:8ca71d1ff70812f2645c56",
   measurementId: "G-H7VH1ZJYE9"
 };
-
+        
+        let app, auth, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } catch (e) {
+            console.error("Firebase initialization failed", e);
+            alert("Firebaseの初期化に失敗しました。設定情報を確認してください。");
+        }
+        
         // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
         // ★ スタッフ用のパスワードを設定してください (例: 'sandosai2025') ★
         // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
@@ -84,7 +96,8 @@
             const boothListContainer = document.getElementById('booth-list');
             boothListContainer.innerHTML = '';
 
-            const crowdStatusCollection = collection(db, `/artifacts/${appId}/public/data/crowd-status`);
+            const dbPath = `/artifacts/${firebaseConfig.projectId}/public/data/crowd-status`;
+            const crowdStatusCollection = collection(db, dbPath);
             const snapshot = await getDocs(crowdStatusCollection);
             const currentStatuses = {};
             snapshot.forEach(doc => {
@@ -122,7 +135,7 @@
 
                         // Firestoreに書き込み
                         try {
-                            const docRef = doc(db, `/artifacts/${appId}/public/data/crowd-status`, boothId);
+                            const docRef = doc(db, dbPath, boothId);
                             await setDoc(docRef, { 
                                 status: parseInt(status, 10),
                                 name: booth.name,
