@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>山東祭2025 混雑状況 更新ページ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #1a1a3b; color: #f0f0f0; }
+        .status-btn { transition: all 0.2s; }
+        .status-btn.active { transform: scale(1.1); box-shadow: 0 0 15px var(--shadow-color); }
+        .status-btn-0.active { --shadow-color: #4ade80; }
+        .status-btn-1.active { --shadow-color: #facc15; }
+        .status-btn-2.active { --shadow-color: #f87171; }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+    <div id="auth-layer" class="w-full max-w-sm p-8 bg-black/30 rounded-2xl backdrop-blur-sm">
+        <h1 class="text-2xl font-bold text-center text-white mb-6">管理者ログイン</h1>
+        <input type="password" id="password-input" class="w-full bg-white/10 rounded-full px-6 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d1bfff]" placeholder="パスワードを入力">
+        <button id="login-button" class="w-full mt-4 px-8 py-3 font-bold text-white rounded-full bg-indigo-600 hover:bg-indigo-700 transition-colors">ログイン</button>
+    </div>
+
+    <div id="admin-panel" class="hidden w-full max-w-4xl p-4 sm:p-8">
+        <h1 class="text-3xl font-bold text-center text-white mb-8">混雑状況 更新パネル</h1>
+        <div id="booth-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- JSで企画リストを生成 -->
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ★ 修正点: 環境変数からFirebase設定を読み込むように変更
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        
+        let app, auth, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } catch (e) {
+            console.error("Firebase initialization failed", e);
+            alert("Firebaseの初期化に失敗しました。設定情報を確認してください。");
+        }
+        
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        // ★ スタッフ用のパスワードを設定してください (例: 'sandosai2025') ★
+        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        const ADMIN_PASSWORD = "yamatosai2025.staff"; 
+
+        // --- 認証 ---
+        document.getElementById('login-button').addEventListener('click', () => {
+            const input = document.getElementById('password-input').value;
+            if (input === ADMIN_PASSWORD) {
+                document.getElementById('auth-layer').classList.add('hidden');
+                document.getElementById('admin-panel').classList.remove('hidden');
+                initializeAdminApp();
+            } else {
+                alert('パスワードが違います。');
+            }
+        });
+        document.getElementById('password-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('login-button').click();
+        });
+
+        async function initializeAdminApp() {
+            try {
+                await signInAnonymously(auth);
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        generateBoothList();
+                    }
+                });
+            } catch (error) {
+                console.error("Anonymous sign-in failed:", error);
+                alert("Firebaseへの接続に失敗しました。設定が正しいか、またはFirebaseコンソールで匿名認証が有効になっているか確認してください。");
+            }
+        }
+
+        async function generateBoothList() {
+            const boothListContainer = document.getElementById('booth-list');
+            boothListContainer.innerHTML = '';
+
+            const crowdStatusCollection = collection(db, `/artifacts/${appId}/public/data/crowd-status`);
+            const snapshot = await getDocs(crowdStatusCollection);
+            const currentStatuses = {};
+            snapshot.forEach(doc => {
+                currentStatuses[doc.id] = doc.data().status;
+            });
+            
+            const allBooths = [...window.boothData.classes, ...window.boothData.clubs];
+
+            allBooths.forEach(booth => {
+                const boothElement = document.createElement('div');
+                boothElement.className = 'bg-black/30 p-4 rounded-lg';
+                boothElement.innerHTML = `
+                    <h3 class="font-bold text-lg mb-3">${booth.name}</h3>
+                    <div class="flex justify-between gap-2" data-booth-id="${booth.id}">
+                        <button class="status-btn status-btn-0 flex-1 bg-green-500/50 hover:bg-green-500/80 rounded p-2" data-status="0">空</button>
+                        <button class="status-btn status-btn-1 flex-1 bg-yellow-500/50 hover:bg-yellow-500/80 rounded p-2" data-status="1">中</button>
+                        <button class="status-btn status-btn-2 flex-1 bg-red-500/50 hover:bg-red-500/80 rounded p-2" data-status="2">混</button>
+                    </div>
+                `;
+                boothListContainer.appendChild(boothElement);
+
+                const buttonGroup = boothElement.querySelector(`[data-booth-id="${booth.id}"]`);
+                if (currentStatuses[booth.id] !== undefined) {
+                    buttonGroup.querySelector(`[data-status="${currentStatuses[booth.id]}"]`).classList.add('active');
+                }
+
+                buttonGroup.addEventListener('click', async (e) => {
+                    if (e.target.classList.contains('status-btn')) {
+                        const status = e.target.dataset.status;
+                        const boothId = e.target.parentElement.dataset.boothId;
+                        
+                        // UIの更新
+                        e.target.parentElement.querySelectorAll('.status-btn').forEach(btn => btn.classList.remove('active'));
+                        e.target.classList.add('active');
+
+                        // Firestoreに書き込み
+                        try {
+                            const docRef = doc(db, `/artifacts/${appId}/public/data/crowd-status`, boothId);
+                            await setDoc(docRef, { 
+                                status: parseInt(status, 10),
+                                name: booth.name,
+                                timestamp: new Date()
+                            });
+                        } catch (error) {
+                            console.error("Error writing document: ", error);
+                            alert('更新に失敗しました。');
+                        }
+                    }
+                });
+            });
+        }
+    </script>
+    <script>
+        // 企画データはメインサイトと共通
+        window.boothData = {
+            classes: [
+                { id: 'c21', name: '2年1組' }, { id: 'c22', name: '2年2組' }, { id: 'c23', name: '2年3組' },
+                { id: 'c24', name: '2年4組' }, { id: 'c25', name: '2年5組' }, { id: 'c26', name: '2年6組' },
+                { id: 'c31', name: '3年1組' }, { id: 'c32', name: '3年2組' }, { id: 'c33', name: '3年3組' },
+                { id: 'c34', name: '3年4組' }, { id: 'c35', name: '3年5組' }, { id: 'c36', name: '3年6組' },
+            ],
+            clubs: [
+                { id: 'literary', name: '文芸部' }, { id: 'jrc', name: 'JRC部' }, { id: 'home_economics', name: '家庭科部' },
+                { id: 'regional_international', name: '地域国際班' }, { id: 'inquiry_a9', name: '探究A9班' }, { id: 'go_shogi', name: '囲碁将棋部' },
+                { id: 'kendo', name: '剣道部' }, { id: 'soccer', name: 'サッカー部' }, { id: 'handball', name: '男子ハンド部' },
+                { id: 'kyudo', name: '弓道部' }, { id: 'track_field', name: '陸上部' }, { id: 'badminton', name: 'バドミントン部' },
+                { id: 'basketball', name: 'バスケ部' }, { id: 'tennis', name: '硬式テニス部' }, { id: 'baseball', name: '野球部' },
+                { id: 'volleyball', name: 'バレー部' }, { id: 'soft_tennis', name: 'ソフトテニス部' }, { id: 'art', name: '美術部' },
+                { id: 'calligraphy', name: '書道部' }, { id: 'photo', name: '写真部' }, { id: 'science', name: '科学部' },
+                { id: 'library', name: '図書委員会' }
+            ]
+        };
+    </script>
+</body>
+</html>
