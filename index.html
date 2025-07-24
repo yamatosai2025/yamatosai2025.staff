@@ -21,14 +21,25 @@
             background-position: right 1rem center;
             background-size: 1.5em 1.5em;
         }
+        /* ★ 修正点: ドロップダウンの文字色を修正 */
+        select, option {
+            color: #f0f0f0;
+        }
+        option {
+            background: #1a1a3b;
+        }
+        /* プレースホルダーのオプションの色を調整 */
+        select:invalid {
+            color: #a0a0a0;
+        }
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen">
 
     <div id="auth-layer" class="w-full max-w-sm p-8 bg-black/30 rounded-2xl backdrop-blur-sm">
         <h1 class="text-2xl font-bold text-center text-white mb-6">担当者 ログイン</h1>
-        <select id="booth-select" class="w-full bg-white/10 rounded-full px-6 py-3 text-white mb-4 focus:outline-none focus:ring-2 focus:ring-[#d1bfff]">
-            <option value="">企画を選択してください</option>
+        <select id="booth-select" class="w-full bg-white/10 rounded-full px-6 py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-[#d1bfff]" required>
+            <option value="" disabled selected hidden>企画を選択してください</option>
             <!-- Options will be added by JS -->
         </select>
         <input type="password" id="password-input" class="w-full bg-white/10 rounded-full px-6 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d1bfff]" placeholder="企画ごとのパスワードを入力">
