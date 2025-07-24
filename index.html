@@ -12,20 +12,33 @@
         .status-btn-0.active { --shadow-color: #4ade80; }
         .status-btn-1.active { --shadow-color: #facc15; }
         .status-btn-2.active { --shadow-color: #f87171; }
+        select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='%23d1bfff' class='w-6 h-6'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5' /%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1.5em 1.5em;
+        }
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen">
 
     <div id="auth-layer" class="w-full max-w-sm p-8 bg-black/30 rounded-2xl backdrop-blur-sm">
-        <h1 class="text-2xl font-bold text-center text-white mb-6">管理者ログイン</h1>
-        <input type="password" id="password-input" class="w-full bg-white/10 rounded-full px-6 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d1bfff]" placeholder="パスワードを入力">
+        <h1 class="text-2xl font-bold text-center text-white mb-6">担当者 ログイン</h1>
+        <select id="booth-select" class="w-full bg-white/10 rounded-full px-6 py-3 text-white mb-4 focus:outline-none focus:ring-2 focus:ring-[#d1bfff]">
+            <option value="">企画を選択してください</option>
+            <!-- Options will be added by JS -->
+        </select>
+        <input type="password" id="password-input" class="w-full bg-white/10 rounded-full px-6 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d1bfff]" placeholder="企画ごとのパスワードを入力">
         <button id="login-button" class="w-full mt-4 px-8 py-3 font-bold text-white rounded-full bg-indigo-600 hover:bg-indigo-700 transition-colors">ログイン</button>
     </div>
 
     <div id="admin-panel" class="hidden w-full max-w-4xl p-4 sm:p-8">
-        <h1 class="text-3xl font-bold text-center text-white mb-8">混雑状況 更新パネル</h1>
-        <div id="booth-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <!-- JSで企画リストを生成 -->
+        <h1 id="admin-title" class="text-3xl font-bold text-center text-white mb-8">混雑状況 更新パネル</h1>
+        <div id="booth-list" class="flex justify-center">
+            <!-- JSで担当企画のパネルを生成 -->
         </div>
     </div>
 
@@ -33,12 +46,12 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
         // ★ ここに、メインサイトと同じFirebaseプロジェクトの設定情報を貼り付けてください ★
         // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-       const firebaseConfig = {
+        const firebaseConfig = {
   apiKey: "AIzaSyBUclBluehOXOZXlDCeePcdVKmYdKkRxFI",
   authDomain: "yamatosai2025-4f10b.firebaseapp.com",
   projectId: "yamatosai2025-4f10b",
@@ -58,18 +71,21 @@
             alert("Firebaseの初期化に失敗しました。設定情報を確認してください。");
         }
         
-        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-        // ★ スタッフ用のパスワードを設定してください (例: 'sandosai2025') ★
-        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-        const ADMIN_PASSWORD = "yamatosai2025.staff"; 
-
         // --- 認証 ---
         document.getElementById('login-button').addEventListener('click', () => {
-            const input = document.getElementById('password-input').value;
-            if (input === ADMIN_PASSWORD) {
+            const selectedBoothId = document.getElementById('booth-select').value;
+            const inputPassword = document.getElementById('password-input').value;
+
+            if (!selectedBoothId) {
+                alert('企画を選択してください。');
+                return;
+            }
+
+            // 選択された企画のパスワードが正しいかチェック
+            if (window.boothPasswords[selectedBoothId] === inputPassword) {
                 document.getElementById('auth-layer').classList.add('hidden');
                 document.getElementById('admin-panel').classList.remove('hidden');
-                initializeAdminApp();
+                initializeAdminApp(selectedBoothId);
             } else {
                 alert('パスワードが違います。');
             }
@@ -78,12 +94,12 @@
             if (e.key === 'Enter') document.getElementById('login-button').click();
         });
 
-        async function initializeAdminApp() {
+        async function initializeAdminApp(boothId) {
             try {
                 await signInAnonymously(auth);
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
-                        generateBoothList();
+                        generateBoothPanel(boothId);
                     }
                 });
             } catch (error) {
@@ -92,66 +108,82 @@
             }
         }
 
-        async function generateBoothList() {
+        async function generateBoothPanel(boothId) {
             const boothListContainer = document.getElementById('booth-list');
             boothListContainer.innerHTML = '';
 
             const dbPath = `/artifacts/${firebaseConfig.projectId}/public/data/crowd-status`;
-            const crowdStatusCollection = collection(db, dbPath);
-            const snapshot = await getDocs(crowdStatusCollection);
-            const currentStatuses = {};
-            snapshot.forEach(doc => {
-                currentStatuses[doc.id] = doc.data().status;
-            });
+            const docRef = doc(db, dbPath, boothId);
+            const docSnap = await getDoc(docRef);
+            const currentStatus = docSnap.exists() ? docSnap.data().status : undefined;
             
             const allBooths = [...window.boothData.classes, ...window.boothData.clubs];
+            const booth = allBooths.find(b => b.id === boothId);
 
-            allBooths.forEach(booth => {
-                const boothElement = document.createElement('div');
-                boothElement.className = 'bg-black/30 p-4 rounded-lg';
-                boothElement.innerHTML = `
-                    <h3 class="font-bold text-lg mb-3">${booth.name}</h3>
-                    <div class="flex justify-between gap-2" data-booth-id="${booth.id}">
-                        <button class="status-btn status-btn-0 flex-1 bg-green-500/50 hover:bg-green-500/80 rounded p-2" data-status="0">空</button>
-                        <button class="status-btn status-btn-1 flex-1 bg-yellow-500/50 hover:bg-yellow-500/80 rounded p-2" data-status="1">中</button>
-                        <button class="status-btn status-btn-2 flex-1 bg-red-500/50 hover:bg-red-500/80 rounded p-2" data-status="2">混</button>
-                    </div>
-                `;
-                boothListContainer.appendChild(boothElement);
+            if (!booth) {
+                boothListContainer.innerHTML = '<p>企画が見つかりません。</p>';
+                return;
+            }
 
-                const buttonGroup = boothElement.querySelector(`[data-booth-id="${booth.id}"]`);
-                if (currentStatuses[booth.id] !== undefined) {
-                    buttonGroup.querySelector(`[data-status="${currentStatuses[booth.id]}"]`).classList.add('active');
-                }
+            document.getElementById('admin-title').innerText = `${booth.name} の混雑状況`;
 
-                buttonGroup.addEventListener('click', async (e) => {
-                    if (e.target.classList.contains('status-btn')) {
-                        const status = e.target.dataset.status;
-                        const boothId = e.target.parentElement.dataset.boothId;
-                        
-                        // UIの更新
-                        e.target.parentElement.querySelectorAll('.status-btn').forEach(btn => btn.classList.remove('active'));
-                        e.target.classList.add('active');
+            const boothElement = document.createElement('div');
+            boothElement.className = 'bg-black/30 p-6 rounded-lg w-full max-w-sm';
+            boothElement.innerHTML = `
+                <h3 class="font-bold text-2xl mb-4 text-center">${booth.name}</h3>
+                <div class="flex justify-between gap-2" data-booth-id="${booth.id}">
+                    <button class="status-btn status-btn-0 flex-1 bg-green-500/50 hover:bg-green-500/80 rounded p-4 text-lg" data-status="0">空</button>
+                    <button class="status-btn status-btn-1 flex-1 bg-yellow-500/50 hover:bg-yellow-500/80 rounded p-4 text-lg" data-status="1">中</button>
+                    <button class="status-btn status-btn-2 flex-1 bg-red-500/50 hover:bg-red-500/80 rounded p-4 text-lg" data-status="2">混</button>
+                </div>
+            `;
+            boothListContainer.appendChild(boothElement);
 
-                        // Firestoreに書き込み
-                        try {
-                            const docRef = doc(db, dbPath, boothId);
-                            await setDoc(docRef, { 
-                                status: parseInt(status, 10),
-                                name: booth.name,
-                                timestamp: new Date()
-                            });
-                        } catch (error) {
-                            console.error("Error writing document: ", error);
-                            alert('更新に失敗しました。');
-                        }
+            const buttonGroup = boothElement.querySelector(`[data-booth-id="${booth.id}"]`);
+            if (currentStatus !== undefined) {
+                buttonGroup.querySelector(`[data-status="${currentStatus}"]`).classList.add('active');
+            }
+
+            buttonGroup.addEventListener('click', async (e) => {
+                if (e.target.classList.contains('status-btn')) {
+                    const status = e.target.dataset.status;
+                    
+                    e.target.parentElement.querySelectorAll('.status-btn').forEach(btn => btn.classList.remove('active'));
+                    e.target.classList.add('active');
+
+                    try {
+                        await setDoc(docRef, { 
+                            status: parseInt(status, 10),
+                            name: booth.name,
+                            timestamp: new Date()
+                        });
+                    } catch (error) {
+                        console.error("Error writing document: ", error);
+                        alert('更新に失敗しました。');
                     }
-                });
+                }
             });
         }
     </script>
     <script>
-        // 企画データはメインサイトと共通
+        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        // ★ ここで各企画のパスワードを設定してください ★
+        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        const boothPasswords = {
+            'c21': 'c21-pass', 'c22': 'c22-pass', 'c23': 'c23-pass', 'c24': 'c24-pass', 'c25': 'c25-pass', 'c26': 'c26-pass',
+            'c31': 'c31-pass', 'c32': 'c32-pass', 'c33': 'c33-pass', 'c34': 'c34-pass', 'c35': 'c35-pass', 'c36': 'c36-pass',
+            'literary': 'literary-pass', 'jrc': 'jrc-pass', 'home_economics': 'home_economics-pass',
+            'regional_international': 'regional_international-pass', 'inquiry_a9': 'inquiry_a9-pass', 'go_shogi': 'go_shogi-pass',
+            'kendo': 'kendo-pass', 'soccer': 'soccer-pass', 'handball': 'handball-pass',
+            'kyudo': 'kyudo-pass', 'track_field': 'track_field-pass', 'badminton': 'badminton-pass',
+            'basketball': 'basketball-pass', 'tennis': 'tennis-pass', 'baseball': 'baseball-pass',
+            'volleyball': 'volleyball-pass', 'soft_tennis': 'soft_tennis-pass', 'art': 'art-pass',
+            'calligraphy': 'calligraphy-pass', 'photo': 'photo-pass', 'science': 'science-pass',
+            'library': 'library-pass'
+        };
+        window.boothPasswords = boothPasswords;
+
+        // 企画データ
         window.boothData = {
             classes: [
                 { id: 'c21', name: '2年1組' }, { id: 'c22', name: '2年2組' }, { id: 'c23', name: '2年3組' },
@@ -170,6 +202,19 @@
                 { id: 'library', name: '図書委員会' }
             ]
         };
+
+        function populateBoothSelector() {
+            const selectElement = document.getElementById('booth-select');
+            const allBooths = [...window.boothData.classes, ...window.boothData.clubs];
+            allBooths.sort((a, b) => a.name.localeCompare(b.name, 'ja')); // 日本語でソート
+            allBooths.forEach(booth => {
+                const option = document.createElement('option');
+                option.value = booth.id;
+                option.textContent = booth.name;
+                selectElement.appendChild(option);
+            });
+        }
+        populateBoothSelector();
     </script>
 </body>
 </html>
