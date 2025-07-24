@@ -21,14 +21,12 @@
             background-position: right 1rem center;
             background-size: 1.5em 1.5em;
         }
-        /* ★ 修正点: ドロップダウンの文字色を修正 */
         select, option {
             color: #f0f0f0;
         }
         option {
             background: #1a1a3b;
         }
-        /* プレースホルダーのオプションの色を調整 */
         select:invalid {
             color: #a0a0a0;
         }
@@ -42,7 +40,8 @@
             <option value="" disabled selected hidden>企画を選択してください</option>
             <!-- Options will be added by JS -->
         </select>
-        <input type="password" id="password-input" class="w-full bg-white/10 rounded-full px-6 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d1bfff]" placeholder="企画ごとのパスワードを入力">
+        <input type="password" id="password-input" class="w-full bg-white/10 rounded-full px-6 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d1bfff]" placeholder="パスワードを入力">
+        <p class="text-xs text-gray-400 mt-2 px-4">※実行委員会三役は企画を選択せずマスターパスワードを入力</p>
         <button id="login-button" class="w-full mt-4 px-8 py-3 font-bold text-white rounded-full bg-indigo-600 hover:bg-indigo-700 transition-colors">ログイン</button>
     </div>
 
@@ -57,12 +56,12 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
         // ★ ここに、メインサイトと同じFirebaseプロジェクトの設定情報を貼り付けてください ★
         // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-        const firebaseConfig = {
+         const firebaseConfig = {
   apiKey: "AIzaSyBUclBluehOXOZXlDCeePcdVKmYdKkRxFI",
   authDomain: "yamatosai2025-4f10b.firebaseapp.com",
   projectId: "yamatosai2025-4f10b",
@@ -87,12 +86,19 @@
             const selectedBoothId = document.getElementById('booth-select').value;
             const inputPassword = document.getElementById('password-input').value;
 
+            // マスター管理者ログイン
+            if (inputPassword === window.MASTER_ADMIN_PASSWORD) {
+                document.getElementById('auth-layer').classList.add('hidden');
+                document.getElementById('admin-panel').classList.remove('hidden');
+                initializeAdminApp('master');
+                return;
+            }
+
+            // 担当者ログイン
             if (!selectedBoothId) {
                 alert('企画を選択してください。');
                 return;
             }
-
-            // 選択された企画のパスワードが正しいかチェック
             if (window.boothPasswords[selectedBoothId] === inputPassword) {
                 document.getElementById('auth-layer').classList.add('hidden');
                 document.getElementById('admin-panel').classList.remove('hidden');
@@ -105,12 +111,12 @@
             if (e.key === 'Enter') document.getElementById('login-button').click();
         });
 
-        async function initializeAdminApp(boothId) {
+        async function initializeAdminApp(loginType) {
             try {
                 await signInAnonymously(auth);
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
-                        generateBoothPanel(boothId);
+                        generatePanels(loginType);
                     }
                 });
             } catch (error) {
@@ -119,64 +125,89 @@
             }
         }
 
-        async function generateBoothPanel(boothId) {
+        async function generatePanels(loginType) {
             const boothListContainer = document.getElementById('booth-list');
             boothListContainer.innerHTML = '';
 
             const dbPath = `/artifacts/${firebaseConfig.projectId}/public/data/crowd-status`;
-            const docRef = doc(db, dbPath, boothId);
-            const docSnap = await getDoc(docRef);
-            const currentStatus = docSnap.exists() ? docSnap.data().status : undefined;
+            const crowdStatusCollection = collection(db, dbPath);
+            const snapshot = await getDocs(crowdStatusCollection);
+            const currentStatuses = {};
+            snapshot.forEach(doc => {
+                currentStatuses[doc.id] = doc.data().status;
+            });
             
             const allBooths = [...window.boothData.classes, ...window.boothData.clubs];
-            const booth = allBooths.find(b => b.id === boothId);
+            let boothsToDisplay = [];
 
-            if (!booth) {
+            if (loginType === 'master') {
+                boothListContainer.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6';
+                document.getElementById('admin-title').innerText = '全体管理パネル';
+                boothsToDisplay = allBooths;
+            } else {
+                boothListContainer.className = 'flex justify-center';
+                const booth = allBooths.find(b => b.id === loginType);
+                if (booth) {
+                    document.getElementById('admin-title').innerText = `${booth.name} の混雑状況`;
+                    boothsToDisplay.push(booth);
+                }
+            }
+
+            if (boothsToDisplay.length === 0) {
                 boothListContainer.innerHTML = '<p>企画が見つかりません。</p>';
                 return;
             }
 
-            document.getElementById('admin-title').innerText = `${booth.name} の混雑状況`;
+            boothsToDisplay.sort((a, b) => a.name.localeCompare(b.name, 'ja')).forEach(booth => {
+                const isMasterView = loginType === 'master';
+                const boothElement = document.createElement('div');
+                boothElement.className = isMasterView ? 'bg-black/30 p-4 rounded-lg' : 'bg-black/30 p-6 rounded-lg w-full max-w-sm';
+                boothElement.innerHTML = `
+                    <h3 class="${isMasterView ? 'font-bold text-lg mb-3' : 'font-bold text-2xl mb-4 text-center'}">${booth.name}</h3>
+                    <div class="flex justify-between gap-2" data-booth-id="${booth.id}">
+                        <button class="status-btn status-btn-0 flex-1 bg-green-500/50 hover:bg-green-500/80 rounded ${isMasterView ? 'p-2' : 'p-4 text-lg'}" data-status="0">空</button>
+                        <button class="status-btn status-btn-1 flex-1 bg-yellow-500/50 hover:bg-yellow-500/80 rounded ${isMasterView ? 'p-2' : 'p-4 text-lg'}" data-status="1">中</button>
+                        <button class="status-btn status-btn-2 flex-1 bg-red-500/50 hover:bg-red-500/80 rounded ${isMasterView ? 'p-2' : 'p-4 text-lg'}" data-status="2">混</button>
+                    </div>
+                `;
+                boothListContainer.appendChild(boothElement);
 
-            const boothElement = document.createElement('div');
-            boothElement.className = 'bg-black/30 p-6 rounded-lg w-full max-w-sm';
-            boothElement.innerHTML = `
-                <h3 class="font-bold text-2xl mb-4 text-center">${booth.name}</h3>
-                <div class="flex justify-between gap-2" data-booth-id="${booth.id}">
-                    <button class="status-btn status-btn-0 flex-1 bg-green-500/50 hover:bg-green-500/80 rounded p-4 text-lg" data-status="0">空</button>
-                    <button class="status-btn status-btn-1 flex-1 bg-yellow-500/50 hover:bg-yellow-500/80 rounded p-4 text-lg" data-status="1">中</button>
-                    <button class="status-btn status-btn-2 flex-1 bg-red-500/50 hover:bg-red-500/80 rounded p-4 text-lg" data-status="2">混</button>
-                </div>
-            `;
-            boothListContainer.appendChild(boothElement);
-
-            const buttonGroup = boothElement.querySelector(`[data-booth-id="${booth.id}"]`);
-            if (currentStatus !== undefined) {
-                buttonGroup.querySelector(`[data-status="${currentStatus}"]`).classList.add('active');
-            }
-
-            buttonGroup.addEventListener('click', async (e) => {
-                if (e.target.classList.contains('status-btn')) {
-                    const status = e.target.dataset.status;
-                    
-                    e.target.parentElement.querySelectorAll('.status-btn').forEach(btn => btn.classList.remove('active'));
-                    e.target.classList.add('active');
-
-                    try {
-                        await setDoc(docRef, { 
-                            status: parseInt(status, 10),
-                            name: booth.name,
-                            timestamp: new Date()
-                        });
-                    } catch (error) {
-                        console.error("Error writing document: ", error);
-                        alert('更新に失敗しました。');
-                    }
+                const buttonGroup = boothElement.querySelector(`[data-booth-id="${booth.id}"]`);
+                const currentStatus = currentStatuses[booth.id];
+                if (currentStatus !== undefined) {
+                    buttonGroup.querySelector(`[data-status="${currentStatus}"]`).classList.add('active');
                 }
+
+                buttonGroup.addEventListener('click', async (e) => {
+                    if (e.target.classList.contains('status-btn')) {
+                        const status = e.target.dataset.status;
+                        
+                        e.target.parentElement.querySelectorAll('.status-btn').forEach(btn => btn.classList.remove('active'));
+                        e.target.classList.add('active');
+
+                        try {
+                            const docRef = doc(db, dbPath, booth.id);
+                            await setDoc(docRef, { 
+                                status: parseInt(status, 10),
+                                name: booth.name,
+                                timestamp: new Date()
+                            });
+                        } catch (error) {
+                            console.error("Error writing document: ", error);
+                            alert('更新に失敗しました。');
+                        }
+                    }
+                });
             });
         }
     </script>
     <script>
+        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        // ★ ここで実行委員会三役用のマスターパスワードを設定してください ★
+        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        const MASTER_ADMIN_PASSWORD = "master-password";
+        window.MASTER_ADMIN_PASSWORD = MASTER_ADMIN_PASSWORD;
+
         // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
         // ★ ここで各企画のパスワードを設定してください ★
         // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
